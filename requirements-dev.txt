@@ -1,0 +1,4 @@
+# Testing and Quality Assurance
+pytest>=7.4.0
+httpx>=0.24.0
+flake8>=6.0.0

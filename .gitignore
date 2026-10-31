@@ -1,0 +1,25 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Test & caching artifacts
+.pytest_cache/
+.deepeval/
+*.log
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Model weights (track directory with .gitkeep only)
+weights/*.pth
+weights/*.pt
+weights/*.bin
+!weights/.gitkeep
+
+# Operating system & Editor files
+.DS_Store
+.vscode/
+.idea/
