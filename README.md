@@ -146,10 +146,10 @@ Detailed metadata about the deployed AI model.
   "model_name": "UniRepLKNet with DINOv3 Backbone",
   "backbone_arch": "dinov3_vits16",
   "in_channels": 1,
-  "expected_input_shape": [1, 1, 128, 1024],
+  "expected_input_shape": [1, 1, 128, 512],
   "num_classes": 3,
   "classes": ["angry", "neutral", "happy"],
-  "weights_status": "untrained_weights (CI/test mode - ready for checkpoint)",
+  "weights_status": "loaded_backbone: dinov3_vits16_pretrain_lvd1689m.pth",
   "version": "1.0.0"
 }
 ```
@@ -184,41 +184,97 @@ Executes audio spectrogram inference and classification.
     }
   },
   "input_shape": [1, 1, 128, 512],
-  "latency_ms": 200.27
+  "latency_ms": 110.27
 }
 ```
 
 ### 6.4. `POST /predict/audio`
 Upload a raw audio file (`.wav`, `.mp3`, `.flac`, `.ogg`), automatically resampled to 16kHz, converted to a Kaldi/AST log-mel filterbank (128x512) and classified.
 
-* **Curl Example:**
-```bash
-curl -X POST "http://localhost:8000/predict/audio" \
-     -F "file=@sample_voice.wav"
-```
-
 * **Response (200 OK):**
 ```json
 {
   "status": "success",
   "prediction": {
-    "predicted_label": "happy",
-    "class_id": 2,
-    "confidence": 0.4285,
+    "predicted_label": "neutral",
+    "class_id": 1,
+    "confidence": 0.4207,
     "probabilities": {
-      "angry": 0.2814,
-      "neutral": 0.2901,
-      "happy": 0.4285
+      "angry": 0.3238,
+      "neutral": 0.4207,
+      "happy": 0.2555
     }
   },
   "input_shape": [1, 1, 128, 512],
-  "latency_ms": 185.4
+  "latency_ms": 115.4
 }
 ```
 
 ---
 
-## 7. GitHub Actions CI/CD & Docker Hub Setup
+## 7. API Testing Guide with cURL
+
+Below are quick-start `curl` commands to test each endpoint of the running microservice (local development or Docker container):
+
+### 7.1. Check Service Health
+```bash
+curl -s http://localhost:8000/health | jq .
+```
+* Verifies container status, execution device (`cpu` / `cuda`), and model weights status (`loaded_backbone`, `loaded_classifier`, or `untrained_weights`).
+
+### 7.2. Inspect Model Metadata & Emotion Classes
+```bash
+curl -s http://localhost:8000/info | jq .
+```
+* Returns model architecture (`dinov3_vits16`), input tensor shape (`[1, 1, 128, 512]`), and configured emotion labels (`angry`, `neutral`, `happy`).
+
+### 7.3. Test Raw Audio File Classification (`POST /predict/audio`)
+Upload an audio file directly (`.wav`, `.mp3`, `.flac`):
+
+```bash
+# 1. Standard curl upload
+curl -X POST "http://localhost:8000/predict/audio" \
+  -H "accept: application/json" \
+  -F "file=@./path/to/sample.wav"
+
+# 2. Formatted JSON output with jq
+curl -s -X POST "http://localhost:8000/predict/audio" \
+  -H "accept: application/json" \
+  -F "file=@./path/to/sample.wav" | jq .
+```
+
+* **Example Real-world Response:**
+```json
+{
+  "status": "success",
+  "prediction": {
+    "predicted_label": "neutral",
+    "class_id": 1,
+    "confidence": 0.4207,
+    "probabilities": {
+      "angry": 0.3238,
+      "neutral": 0.4207,
+      "happy": 0.2555
+    }
+  },
+  "input_shape": [1, 1, 128, 512],
+  "latency_ms": 110.16
+}
+```
+
+### 7.4. Test Spectrogram Inference (`POST /predict`)
+For benchmarking without audio files:
+
+```bash
+# Synthetic random spectrogram benchmark:
+curl -s -X POST "http://localhost:8000/predict" \
+  -H "Content-Type: application/json" \
+  -d '{"use_synthetic": true}' | jq .
+```
+
+---
+
+## 8. GitHub Actions CI/CD & Docker Hub Setup
 
 The project uses two independent workflows located in `./.github/workflows/`:
 * [`ci.yml`](./.github/workflows/ci.yml): Triggered on every `push` and `pull_request` targeting `main`, running flake8 linting and the pytest test suite.
