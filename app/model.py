@@ -76,18 +76,22 @@ class AudioModelService:
         if custom_path and os.path.isfile(custom_path):
             target_file = custom_path
         elif os.path.isdir(self.weights_dir):
-            candidates = [
+            candidates = sorted([
                 f for f in os.listdir(self.weights_dir)
                 if f.endswith((".pth", ".pt", ".bin"))
-            ]
-            if candidates:
+            ])
+            # Prioritize full fine-tuned model checkpoint over raw backbone if both exist
+            classifier_ckpts = [f for f in candidates if "best" in f.lower() or "classifier" in f.lower()]
+            if classifier_ckpts:
+                target_file = os.path.join(self.weights_dir, classifier_ckpts[0])
+            elif candidates:
                 target_file = os.path.join(self.weights_dir, candidates[0])
 
         if target_file:
             try:
                 ckpt = torch.load(target_file, map_location=self.device, weights_only=False)
                 state_dict = ckpt.get("model_state_dict", ckpt.get("state_dict", ckpt))
-                if "classes" in ckpt and isinstance(ckpt["classes"], list):
+                if isinstance(ckpt, dict) and "classes" in ckpt and isinstance(ckpt["classes"], list):
                     self.classes = ckpt["classes"]
                     self.num_classes = len(self.classes)
                     # Tái khởi tạo head nếu số lớp thay đổi
@@ -97,8 +101,21 @@ class AudioModelService:
                         nn.Linear(embed_dim, self.num_classes)
                     ).to(self.device)
 
-                self.model.load_state_dict(state_dict, strict=False)
-                return f"loaded: {os.path.basename(target_file)}"
+                # Kiểm tra loại checkpoint: Full classifier hay Raw DINOv3 backbone
+                if any(k.startswith("unireplknet.") or k.startswith("mlp_head.") for k in state_dict.keys()):
+                    self.model.load_state_dict(state_dict, strict=False)
+                    return f"loaded_classifier: {os.path.basename(target_file)}"
+                elif "patch_embed.proj.weight" in state_dict or "cls_token" in state_dict:
+                    # Raw DINOv3 ViT backbone weights
+                    if "patch_embed.proj.weight" in state_dict and state_dict["patch_embed.proj.weight"].shape[1] == 3:
+                        state_dict["patch_embed.proj.weight"] = (
+                            state_dict["patch_embed.proj.weight"].sum(dim=1, keepdim=True) / 3.0
+                        )
+                    self.model.unireplknet.backbone.vit.load_state_dict(state_dict, strict=False)
+                    return f"loaded_backbone: {os.path.basename(target_file)}"
+                else:
+                    self.model.load_state_dict(state_dict, strict=False)
+                    return f"loaded: {os.path.basename(target_file)}"
             except Exception as e:
                 logger.warning(f"Lỗi khi nạp trọng số từ {target_file}: {e}. Fallback về untrained weights.")
                 return f"fallback_untrained (error loading {os.path.basename(target_file)})"
