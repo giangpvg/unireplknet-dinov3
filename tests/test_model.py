@@ -10,8 +10,8 @@ def model_service():
 
 def test_model_initialization(model_service):
     assert model_service.model is not None
-    assert model_service.num_classes == 10
-    assert len(model_service.classes) == 10
+    assert model_service.num_classes == 3
+    assert len(model_service.classes) == 3
     assert "untrained_weights" in model_service.weights_status or "loaded" in model_service.weights_status
 
 
@@ -21,7 +21,7 @@ def test_model_predict_shape_and_probability(model_service):
 
     assert shape == [1, 1, 128, 1024]
     assert latency > 0
-    assert result["class_id"] in range(10)
+    assert result["class_id"] in range(3)
     assert result["predicted_label"] in model_service.classes
     assert 0.0 <= result["confidence"] <= 1.0
 

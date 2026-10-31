@@ -10,8 +10,7 @@ from app.core.unireplknet_dinov3 import UniRepLKNet
 logger = logging.getLogger("ai_service.model")
 
 DEFAULT_CLASSES = [
-    "silence", "unknown", "yes", "no", "up",
-    "down", "left", "right", "on", "off"
+    "angry", "neutral", "happy"
 ]
 
 

@@ -30,8 +30,8 @@ def test_info_endpoint(client):
     assert response.status_code == 200
     data = response.json()
     assert data["model_name"] == "UniRepLKNet with DINOv3 Backbone"
-    assert data["num_classes"] == 10
-    assert len(data["classes"]) == 10
+    assert data["num_classes"] == 3
+    assert len(data["classes"]) == 3
 
 
 def test_predict_synthetic_endpoint(client):
@@ -54,7 +54,7 @@ def test_predict_custom_spectrogram(client):
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "success"
-    assert data["prediction"]["class_id"] in range(10)
+    assert data["prediction"]["class_id"] in range(3)
 
 
 def test_predict_invalid_dimensions(client):

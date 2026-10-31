@@ -147,8 +147,8 @@ Detailed metadata about the deployed AI model.
   "backbone_arch": "dinov3_vits16",
   "in_channels": 1,
   "expected_input_shape": [1, 1, 128, 1024],
-  "num_classes": 10,
-  "classes": ["silence", "unknown", "yes", "no", "up", "down", "left", "right", "on", "off"],
+  "num_classes": 3,
+  "classes": ["angry", "neutral", "happy"],
   "weights_status": "untrained_weights (CI/test mode - ready for checkpoint)",
   "version": "1.0.0"
 }
@@ -174,20 +174,13 @@ Executes audio spectrogram inference and classification.
 {
   "status": "success",
   "prediction": {
-    "predicted_label": "yes",
+    "predicted_label": "happy",
     "class_id": 2,
-    "confidence": 0.188,
+    "confidence": 0.4285,
     "probabilities": {
-      "silence": 0.089,
-      "unknown": 0.0571,
-      "yes": 0.188,
-      "no": 0.126,
-      "up": 0.0989,
-      "down": 0.052,
-      "left": 0.0735,
-      "right": 0.118,
-      "on": 0.143,
-      "off": 0.0546
+      "angry": 0.2814,
+      "neutral": 0.2901,
+      "happy": 0.4285
     }
   },
   "input_shape": [1, 1, 128, 1024],

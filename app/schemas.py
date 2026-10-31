@@ -14,11 +14,8 @@ class ModelInfoResponse(BaseModel):
     backbone_arch: str = "dinov3_vits16"
     in_channels: int = 1
     expected_input_shape: List[int] = [1, 1, 128, 1024]
-    num_classes: int = 10
-    classes: List[str] = [
-        "silence", "unknown", "yes", "no", "up", 
-        "down", "left", "right", "on", "off"
-    ]
+    num_classes: int = 3
+    classes: List[str] = ["angry", "neutral", "happy"]
     weights_status: str
     version: str = "1.0.0"
 
