@@ -40,15 +40,15 @@ def test_predict_synthetic_endpoint(client):
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "success"
-    assert data["input_shape"] == [1, 1, 128, 1024]
+    assert data["input_shape"] == [1, 1, 128, 512]
     assert "prediction" in data
     assert "predicted_label" in data["prediction"]
     assert 0.0 <= data["prediction"]["confidence"] <= 1.0
 
 
 def test_predict_custom_spectrogram(client):
-    # Tạo mảng spectrogram mẫu 128 x 1024
-    sample_spectrogram = [[0.5] * 1024 for _ in range(128)]
+    # Tạo mảng spectrogram mẫu 128 x 512
+    sample_spectrogram = [[0.5] * 512 for _ in range(128)]
     payload = {"spectrogram": sample_spectrogram, "use_synthetic": False}
     response = client.post("/predict", json=payload)
     assert response.status_code == 200
@@ -62,3 +62,22 @@ def test_predict_invalid_dimensions(client):
     payload = {"spectrogram": [1.0, 2.0, 3.0], "use_synthetic": False}
     response = client.post("/predict", json=payload)
     assert response.status_code == 422
+
+
+def test_predict_audio_file_upload(client):
+    import io
+    import soundfile as sf
+    import torch
+    buf = io.BytesIO()
+    sf.write(buf, torch.randn(16000).numpy(), 16000, format="WAV")
+    buf.seek(0)
+    response = client.post(
+        "/predict/audio",
+        files={"file": ("test_voice.wav", buf.read(), "audio/wav")}
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["input_shape"] == [1, 1, 128, 512]
+    assert data["prediction"]["predicted_label"] in ["angry", "neutral", "happy"]
+    assert data["prediction"]["class_id"] in range(3)

@@ -2,7 +2,7 @@ import logging
 from typing import Dict
 import numpy as np
 import torch
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
@@ -63,7 +63,7 @@ def get_model_info() -> ModelInfoResponse:
         model_name="UniRepLKNet with DINOv3 Backbone",
         backbone_arch=model_service.backbone_arch,
         in_channels=1,
-        expected_input_shape=[1, 1, 128, 1024],
+        expected_input_shape=[1, 1, 128, 512],
         num_classes=model_service.num_classes,
         classes=model_service.classes,
         weights_status=model_service.weights_status,
@@ -75,8 +75,8 @@ def get_model_info() -> ModelInfoResponse:
 def predict_audio(request: PredictJsonRequest) -> PredictResponse:
     try:
         if request.use_synthetic or request.spectrogram is None:
-            # Sinh tensor spectrogram mô phỏng kích thước chuẩn (1, 1, 128, 1024)
-            input_tensor = torch.rand(1, 1, 128, 1024)
+            # Sinh tensor spectrogram mô phỏng kích thước chuẩn (1, 1, 128, 512)
+            input_tensor = torch.rand(1, 1, 128, 512)
         else:
             arr = np.array(request.spectrogram, dtype=np.float32)
             if arr.ndim not in (2, 3, 4):
@@ -102,4 +102,37 @@ def predict_audio(request: PredictJsonRequest) -> PredictResponse:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Lỗi hệ thống khi dự đoán: {str(e)}",
+        )
+
+
+@app.post("/predict/audio", response_model=PredictResponse, summary="Predict from Raw Audio File (.wav, .mp3, .flac)")
+async def predict_raw_audio(file: UploadFile = File(...)) -> PredictResponse:
+    """
+    Nhận file âm thanh trực tiếp (.wav, .mp3, .flac,...),
+    tự động trích xuất Mel-filterbank theo chuẩn AST/Kaldi và trả về cảm xúc dự đoán.
+    """
+    try:
+        content = await file.read()
+        if not content:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Tập tin âm thanh rỗng.",
+            )
+
+        pred_detail, input_shape, latency = model_service.predict_audio(content)
+
+        return PredictResponse(
+            status="success",
+            prediction=PredictionDetail(**pred_detail),
+            input_shape=input_shape,
+            latency_ms=latency,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Lỗi khi xử lý file âm thanh: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi hệ thống khi dự đoán âm thanh: {str(e)}",
         )

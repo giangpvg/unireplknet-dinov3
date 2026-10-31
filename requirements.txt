@@ -1,5 +1,7 @@
 # Core Deep Learning Runtime (CPU/GPU)
 torch>=2.0.0
+torchaudio>=2.0.0
+soundfile>=0.12.0
 numpy>=1.23.0
 
 # API Serving Framework

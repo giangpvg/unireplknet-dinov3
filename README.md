@@ -183,8 +183,36 @@ Executes audio spectrogram inference and classification.
       "happy": 0.4285
     }
   },
-  "input_shape": [1, 1, 128, 1024],
+  "input_shape": [1, 1, 128, 512],
   "latency_ms": 200.27
+}
+```
+
+### 6.4. `POST /predict/audio`
+Upload a raw audio file (`.wav`, `.mp3`, `.flac`, `.ogg`), automatically resampled to 16kHz, converted to a Kaldi/AST log-mel filterbank (128x512) and classified.
+
+* **Curl Example:**
+```bash
+curl -X POST "http://localhost:8000/predict/audio" \
+     -F "file=@sample_voice.wav"
+```
+
+* **Response (200 OK):**
+```json
+{
+  "status": "success",
+  "prediction": {
+    "predicted_label": "happy",
+    "class_id": 2,
+    "confidence": 0.4285,
+    "probabilities": {
+      "angry": 0.2814,
+      "neutral": 0.2901,
+      "happy": 0.4285
+    }
+  },
+  "input_shape": [1, 1, 128, 512],
+  "latency_ms": 185.4
 }
 ```
 

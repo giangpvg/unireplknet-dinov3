@@ -1,17 +1,51 @@
 import os
+import io
 import time
 import logging
-from typing import Dict, List, Tuple
+from pathlib import Path
+from typing import Dict, List, Tuple, Union
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 
 from app.core.unireplknet_dinov3 import UniRepLKNet
+from app.audio_utils import audio_to_fbank_tensor
 
 logger = logging.getLogger("ai_service.model")
 
 DEFAULT_CLASSES = [
     "angry", "neutral", "happy"
 ]
+
+
+class AudioUniRepLKNet(nn.Module):
+    """
+    UniRepLKNet với DINOv3 ViT backbone kết hợp MLP Head phân loại
+    theo đúng kiến trúc chuẩn trong train.py.
+    """
+    def __init__(self, num_classes=3, arch='dinov3_vits16', ckpt=None, drop_path_rate=0.1, head_dropout=0.1):
+        super().__init__()
+        self.unireplknet = UniRepLKNet(
+            in_chans=1,
+            num_classes=None,  # Trả về pooled embedding (N, embed_dim)
+            drop_path_rate=drop_path_rate,
+            backbone_arch=arch,
+            backbone_ckpt=ckpt
+        )
+        embed_dim = self.unireplknet.backbone.embed_dim
+
+        self.mlp_head = nn.Sequential(
+            nn.LayerNorm(embed_dim, eps=1e-6),
+            nn.Dropout(p=head_dropout) if head_dropout > 0 else nn.Identity(),
+            nn.Linear(embed_dim, num_classes)
+        )
+
+    def forward(self, x):
+        if x.dim() == 3:  # (B, T, F) -> (B, 1, F, T)
+            x = x.unsqueeze(1).transpose(2, 3)
+        feats = self.unireplknet(x)
+        logits = self.mlp_head(feats)
+        return logits
 
 
 class AudioModelService:
@@ -21,12 +55,13 @@ class AudioModelService:
         self.classes = DEFAULT_CLASSES
         self.num_classes = len(self.classes)
         self.backbone_arch = "dinov3_vits16"
+        self.target_length = 512
+        self.num_mel_bins = 128
         
-        # Khởi tạo kiến trúc UniRepLKNet với DINOv3 ViT-S/16 backbone
-        self.model = UniRepLKNet(
-            in_chans=1,
+        # Khởi tạo kiến trúc AudioUniRepLKNet chuẩn hóa
+        self.model = AudioUniRepLKNet(
             num_classes=self.num_classes,
-            backbone_arch=self.backbone_arch
+            arch=self.backbone_arch
         ).to(self.device)
         
         # Quét và nạp trọng số nếu có
@@ -50,8 +85,18 @@ class AudioModelService:
 
         if target_file:
             try:
-                ckpt = torch.load(target_file, map_location=self.device)
-                state_dict = ckpt.get("state_dict", ckpt)
+                ckpt = torch.load(target_file, map_location=self.device, weights_only=False)
+                state_dict = ckpt.get("model_state_dict", ckpt.get("state_dict", ckpt))
+                if "classes" in ckpt and isinstance(ckpt["classes"], list):
+                    self.classes = ckpt["classes"]
+                    self.num_classes = len(self.classes)
+                    # Tái khởi tạo head nếu số lớp thay đổi
+                    embed_dim = self.model.unireplknet.backbone.embed_dim
+                    self.model.mlp_head = nn.Sequential(
+                        nn.LayerNorm(embed_dim, eps=1e-6),
+                        nn.Linear(embed_dim, self.num_classes)
+                    ).to(self.device)
+
                 self.model.load_state_dict(state_dict, strict=False)
                 return f"loaded: {os.path.basename(target_file)}"
             except Exception as e:
@@ -62,25 +107,29 @@ class AudioModelService:
 
     def preprocess_tensor(self, raw_input: torch.Tensor) -> torch.Tensor:
         """
-        Chuẩn hóa tensor đầu vào về kích thước chuẩn (1, 1, 128, 1024).
+        Chuẩn hóa tensor đầu vào về kích thước chuẩn (1, 1, 128, 512).
         """
         tensor = raw_input.to(self.device).float()
         
-        # Nếu là 2D [128, 1024] -> [1, 1, 128, 1024]
+        # Nếu là 2D [128, length] -> [1, 1, 128, length]
         if tensor.dim() == 2:
             tensor = tensor.unsqueeze(0).unsqueeze(0)
         elif tensor.dim() == 3:
             tensor = tensor.unsqueeze(0)
         
-        # Đảm bảo đúng kích thước (H, W) = (128, 1024)
-        if tensor.shape[-2:] != (128, 1024):
-            tensor = F.interpolate(tensor, size=(128, 1024), mode="bilinear", align_corners=False)
+        # Đảm bảo H và W chia hết cho 16 (DINOv3 patch_size = 16)
+        h, w = tensor.shape[-2], tensor.shape[-1]
+        target_h = ((h + 15) // 16) * 16 if h % 16 != 0 else h
+        target_w = ((w + 15) // 16) * 16 if w % 16 != 0 else w
+        
+        if (h, w) != (target_h, target_w):
+            tensor = F.interpolate(tensor, size=(target_h, target_w), mode="bilinear", align_corners=False)
             
         return tensor
 
     def predict(self, input_tensor: torch.Tensor) -> Tuple[Dict, List[int], float]:
         """
-        Thực thi inference và đo độ trễ.
+        Thực thi inference từ tensor spectrogram và đo độ trễ.
         """
         start_time = time.perf_counter()
         processed_input = self.preprocess_tensor(input_tensor)
@@ -108,6 +157,19 @@ class AudioModelService:
         }
         
         return result, list(processed_input.shape), latency_ms
+
+    def predict_audio(self, audio_source: Union[str, Path, bytes, io.BytesIO]) -> Tuple[Dict, List[int], float]:
+        """
+        Nhận file âm thanh thô (WAV, MP3,...), tự động trích xuất fbank
+        theo pipeline của train.py và thực thi dự đoán.
+        """
+        fbank_tensor = audio_to_fbank_tensor(
+            audio_source,
+            target_sr=16000,
+            num_mel_bins=self.num_mel_bins,
+            target_length=self.target_length
+        )
+        return self.predict(fbank_tensor)
 
 
 # Khởi tạo singleton instance cho API
