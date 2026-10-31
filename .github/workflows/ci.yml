@@ -34,5 +34,7 @@ jobs:
           flake8 . --exclude=app/core/dinov3 --count --exit-zero --max-complexity=15 --max-line-length=127 --statistics
 
       - name: Execute Pytest Suite
+        env:
+          AUTO_DOWNLOAD_WEIGHTS: "false"
         run: |
           pytest -v tests/

@@ -3,7 +3,7 @@ import io
 import time
 import logging
 from pathlib import Path
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Tuple, Union, Optional
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -69,6 +69,49 @@ class AudioModelService:
         self.model.eval()
         logger.info(f"Khởi tạo AudioModelService thành công trên {self.device}. Trạng thái weights: {self.weights_status}")
 
+    def _download_model_weights(self) -> Optional[str]:
+        """
+        Tự động tải model weights từ Remote Storage (GitHub Release / Hugging Face)
+        khi container khởi động mà chưa có file weights cục bộ.
+        """
+        download_url = os.environ.get(
+            "MODEL_DOWNLOAD_URL",
+            "https://github.com/giangpvg/unireplknet-dinov3/releases/download/v1.0.0/dinov3_vits16_pretrain_lvd1689m.pth"
+        )
+        auto_download = os.environ.get("AUTO_DOWNLOAD_WEIGHTS", "true").lower() in ("1", "true", "yes")
+        if not auto_download or not download_url:
+            return None
+
+        try:
+            os.makedirs(self.weights_dir, exist_ok=True)
+            filename = os.path.basename(download_url.split("?")[0]) or "dinov3_vits16_pretrain_lvd1689m.pth"
+            dest_path = os.path.join(self.weights_dir, filename)
+
+            # Nếu file đã tồn tại và đủ dung lượng (>1MB) thì dùng luôn
+            if os.path.isfile(dest_path) and os.path.getsize(dest_path) > 1000000:
+                return dest_path
+
+            logger.info(f"Đang tự động tải model weights từ {download_url} về {dest_path}...")
+            import urllib.request
+            import shutil
+
+            req = urllib.request.Request(
+                download_url,
+                headers={"User-Agent": "Mozilla/5.0 (compatible; AudioServingService/1.0)"}
+            )
+            with urllib.request.urlopen(req, timeout=180) as response, open(dest_path, "wb") as out_file:
+                shutil.copyfileobj(response, out_file)
+
+            if os.path.isfile(dest_path) and os.path.getsize(dest_path) > 1000000:
+                logger.info(f"Tải thành công {dest_path} ({os.path.getsize(dest_path)} bytes).")
+                return dest_path
+            else:
+                logger.warning("File tải về không hợp lệ hoặc quá nhỏ.")
+                return None
+        except Exception as e:
+            logger.warning(f"Không thể tự động tải weights từ {download_url}: {e}. Fallback về untrained weights.")
+            return None
+
     def _load_weights(self) -> str:
         custom_path = os.environ.get("MODEL_WEIGHTS_PATH")
         target_file = None
@@ -86,6 +129,10 @@ class AudioModelService:
                 target_file = os.path.join(self.weights_dir, classifier_ckpts[0])
             elif candidates:
                 target_file = os.path.join(self.weights_dir, candidates[0])
+
+        # Nếu chưa có file cục bộ, tự động tải từ Remote Storage (GitHub Release)
+        if target_file is None:
+            target_file = self._download_model_weights()
 
         if target_file:
             try:
