@@ -23,3 +23,6 @@ weights/*.bin
 .DS_Store
 .vscode/
 .idea/
+
+# Planning files
+plan.md
