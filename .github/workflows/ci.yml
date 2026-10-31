@@ -28,10 +28,10 @@ jobs:
 
       - name: Lint Code with Flake8
         run: |
-          # Dừng pipeline nếu có lỗi cú pháp hoặc undefined variables
-          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-          # Kiểm tra độ phức tạp và cảnh báo định dạng
-          flake8 . --count --exit-zero --max-complexity=15 --max-line-length=127 --statistics
+          # Kiểm tra lỗi cú pháp mã nguồn dự án (bỏ qua thư viện third-party dinov3)
+          flake8 . --exclude=app/core/dinov3 --count --select=E9,F63,F7,F82 --show-source --statistics
+          # Cảnh báo định dạng và độ phức tạp
+          flake8 . --exclude=app/core/dinov3 --count --exit-zero --max-complexity=15 --max-line-length=127 --statistics
 
       - name: Execute Pytest Suite
         run: |

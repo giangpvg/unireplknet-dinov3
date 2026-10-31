@@ -202,16 +202,3 @@ Executes audio spectrogram inference and classification.
 The project uses two independent workflows located in `./.github/workflows/`:
 * [`ci.yml`](./.github/workflows/ci.yml): Triggered on every `push` and `pull_request` targeting `main`, running flake8 linting and the pytest test suite.
 * [`cd.yml`](./.github/workflows/cd.yml): Triggered upon successful completion of `ci.yml` on `main`, authenticating to Docker Hub, building the multi-platform image, and publishing it to [`giangpvg/unireplknet-dinov3`](https://hub.docker.com/repository/docker/giangpvg/unireplknet-dinov3/general).
-
-### Configuring GitHub Repository Secrets:
-1. Navigate to your GitHub Repository ➔ **Settings** ➔ **Secrets and variables** ➔ **Actions**.
-2. Click **New repository secret** and configure:
-   * `DOCKERHUB_USERNAME`: `giangpvg`
-   * `DOCKERHUB_TOKEN`: Personal Access Token generated from Docker Hub (`dckr_pat_...`).
-3. Commit and push changes to trigger the pipeline:
-   ```bash
-   git add .
-   git commit -m "docs: update README to English"
-   git push origin main
-   ```
-   GitHub Actions will automatically run tests, build the Docker container, and publish the image to Docker Hub.
